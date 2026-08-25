@@ -1,59 +1,463 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Онлайн-клавиатура</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
+    html, body { height: 100%; overflow: hidden; }
     body {
       font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       background: #f0f0f0;
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 40px 20px 160px;
+      height: 100vh;
+      height: 100dvh;
     }
-
-    h2 { margin-bottom: 16px; }
+    h2 { padding: 10px 16px 6px; font-size: 18px; flex-shrink: 0; }
 
     #inputField {
-      width: 100%;
-      max-width: 700px;
-      min-height: 120px;
-      padding: 14px;
+      flex: 1;
+      width: calc(100% - 24px);
+      padding: 12px;
       font-size: 16px;
       border: 2px solid #bbb;
       border-radius: 8px;
-      resize: vertical;
+      resize: none;
       outline: none;
       line-height: 1.5;
       background: #fff;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 12px 6px;
+      caret-color: #4a90e2;
     }
     #inputField:focus { border-color: #4a90e2; }
 
     #keyboard {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      flex-shrink: 0;
       background: #d9dcdf;
-      padding: 8px;
-      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.15);
-      transition: transform 0.3s ease;
+      padding: 6px 8px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+      transition: all 0.25s ease;
       max-width: 900px;
       margin: 0 auto;
+      width: 100%;
     }
-
     .kb-row {
       display: flex;
       justify-content: center;
-      gap: 5px;
-      margin-bottom: 5px;
+      gap: 4px;
+      margin-bottom: 4px;
     }
     .kb-row:last-child { margin-bottom: 0; }
-
     .key {
-      min-width:
+      min-width: 34px;
+      height: 44px;
+      flex: 1;
+      max-width: 66px;
+      border: 1px solid #b0b3b8;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 15px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.08s, transform 0.04s;
+    }
+    .key:hover  { background: #e8e8e8; }
+    .key:active { background: #c8c8c8; transform: translateY(2px); }
+    .key.pressed { background: #c8c8c8; transform: translateY(2px); }
+    .key.special   { background: #c5c8cc; font-size: 12px; }
+    .key.enter     { background: #4a90e2; color: #fff; }
+    .key.backspace { background: #e74c3c; color: #fff; }
+    .key.space     { max-width: 280px; min-width: 120px; flex: 2; }
+    .key.icon      { font-size: 18px; }
+    .key.wide      { max-width: 80px; }
+
+    #keyboard.collapsed .kb-row:not(.reserve-row) { display: none; }
+    #keyboard.collapsed { padding: 4px 8px; }
+
+    /* Резервный ряд: F1 слева, ⚙+Esc справа */
+    .reserve-row { justify-content: space-between; }
+    .reserve-right { display: flex; gap: 4px; }
+
+    /* Helplist: оверлей, не закрывает резервный ряд и Esc */
+    #helplist {
+      position: fixed;
+      top: 4px;
+      bottom: 50px;
+      left: 4px;
+      right: 50px;
+      max-height: calc(100dvh - 54px);
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      display: none;
+      z-index: 50;
+      -webkit-overflow-scrolling: touch;
+    }
+    #helplist.open { display: block; }
+
+    .helplist-item {
+      display: inline-block;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin: 4px 4px 0 0;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: top;
+    }
+    .helplist-item:hover { background: #e0e0e0; }
+    .helplist-empty { color: #888; font-size: 14px; padding: 8px 0; }
+  </style>
+</head>
+<body>
+
+  <h2>Онлайн-клавиатура</h2>
+  <textarea id="inputField"
+            inputmode="none"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="Нажмите «Esc», чтобы открыть клавиатуру…"></textarea>
+
+  <div id="keyboard" class="collapsed">
+    <!-- Резервный ряд: F1 слева, ⚙ и Esc справа -->
+    <div class="kb-row reserve-row">
+      <div class="key special" id="kF1">F1</div>
+      <div class="reserve-right">
+        <div class="key special" id="kSettings">⚙</div>
+        <div class="key special" id="kEsc">Esc</div>
+      </div>
+    </div>
+    <div class="kb-row" data-row="numbers"></div>
+    <div class="kb-row" data-row="row1"></div>
+    <div class="kb-row" data-row="row2"></div>
+    <div class="kb-row" data-row="row3"></div>
+    <div class="kb-row" data-row="bottom"></div>
+  </div>
+
+  <div id="helplist"></div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var currentLang = 'en';
+    var prevLang    = 'en';
+    var lm          = [];
+    var keyboardOpen = false;
+    var caretPos     = 0;
+    var helplistOpen = false;
+
+    // ── Раскладки ──
+    var layouts = {
+      en: {
+        numbers: ['1','2','3','4','5','6','7','8','9','0','-','=','Backspace'],
+        row1:    ['q','w','e','r','t','y','u','i','o','p','(',')'],
+        row2:    ['Tab','a','s','d','f','g','h','j','k','l',';',"'",'Enter'],
+        row3:    ['z','x','c','v','b','n','m',',','.','?','/'],
+        bottom:  ['Cut','Paste','PastePlus','Space','Lang','Sym']
+      },
+      ru: {
+        numbers: ['1','2','3','4','5','6','7','8','9','0','-','=','Backspace'],
+        row1:    ['й','ц','у','к','е','н','г','ш','щ','з','х','ъ']
+        row2:    ['Tab','ф','ы','в','а','п','р','о','л','д','ж','э','Enter'],
+        row3:    ['я','ч','с','м','и','т','ь','б','ю','.','?'],
+        bottom:  ['Cut','Paste','PastePlus','Space','Lang','Sym']
+      },
+      sym: {
+        // Цифры + математические операторы в правой части
+        numbers: ['1','2','3','4','5','6','7','8','9','0','×','÷','+','-','=','Backspace'],
+        // !?:; группой слева, затем — - _, затем пары / < ≤, затем скобки ( [ {
+        row1:    ['!','?',':',';','—','-','_','$','/','<','≤','(','[','{'],
+        // Пары \ > ≥ под / < ≤, затем ` " ' | ~ @ #, затем скобки ) ] }
+        row2:    ['`','"',"'",'|','~','@','#','%','\\','>','≥',')',']','}'],
+        // Оставшиеся символы + Enter
+        row3:    ['√','≈','≠','^','&','*','Enter'],
+        bottom:  ['Cut','Paste','PastePlus','Space','Lang','Sym']
+      }
+    };
+
+    var kb       = document.getElementById('keyboard');
+    var input    = document.getElementById('inputField');
+    var kEsc     = document.getElementById('kEsc');
+    var kF1      = document.getElementById('kF1');
+    var helplist = document.getElementById('helplist');
+
+    // ── Курсор ──
+    function saveCaret() {
+      caretPos = input.selectionStart;
+    }
+    function restoreCaret() {
+      input.focus();
+      input.setSelectionRange(caretPos, caretPos);
+      scrollToCaret();
+    }
+    function scrollToCaret() {
+      var lh = parseInt(getComputedStyle(input).lineHeight, 10) || 24;
+      var lines = input.value.substring(0, caretPos).split('\n').length - 1;
+      var target = lines * lh - input.clientHeight / 2;
+      input.scrollTop = Math.max(0, target);
+    }
+
+    // ── Вставка текста ──
+    function insertText(text) {
+      saveCaret();
+      input.value = input.value.slice(0, caretPos) + text + input.value.slice(caretPos);
+      caretPos += text.length;
+      input.focus();
+      input.setSelectionRange(caretPos, caretPos);
+      scrollToCaret();
+    }
+
+    // ── Вставка скобки с автозакрытием ──
+    function insertBracket(open, close) {
+      saveCaret();
+      input.value = input.value.slice(0, caretPos) + open + close + input.value.slice(caretPos);
+      caretPos += 1; // каретка между открывающей и закрывающей
+      input.focus();
+      input.setSelectionRange(caretPos, caretPos);
+      scrollToCaret();
+    }
+
+    function deleteBack() {
+      saveCaret();
+      if (caretPos > 0) {
+        input.value = input.value.slice(0, caretPos - 1) + input.value.slice(caretPos);
+        caretPos--;
+        input.focus();
+        input.setSelectionRange(caretPos, caretPos);
+        scrollToCaret();
+      }
+    }
+
+    // ── Локальный буфер lm[] ──
+    function addToLm(text) {
+      if (!text || text === '') return;
+      lm.push(text);
+      if (lm.length > 50) lm.shift();
+    }
+
+    // ── Helplist ──
+    function renderHelplist() {
+      helplist.innerHTML = '';
+      if (lm.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'helplist-empty';
+        empty.textContent = 'История пуста';
+        helplist.appendChild(empty);
+        return;
+      }
+      for (var i = lm.length - 1; i >= 0; i--) {
+        (function (item) {
+          var el = document.createElement('div');
+          el.className = 'helplist-item';
+          var txt = item.length > 30 ? item.substring(0, 27) + '…' : item;
+          el.textContent = txt;
+          el.title = item;
+          el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          el.addEventListener('click', function () {
+            insertText(item);
+            closeHelplist();
+          });
+          el.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+          el.addEventListener('touchend', function (e) {
+            e.preventDefault();
+            insertText(item);
+            closeHelplist();
+          }, { passive: false });
+          helplist.appendChild(el);
+        })(lm[i]);
+      }
+    }
+    function openHelplist() {
+      renderHelplist();
+      helplist.classList.add('open');
+      helplistOpen = true;
+    }
+    function closeHelplist() {
+      helplist.classList.remove('open');
+      helplistOpen = false;
+    }
+
+    // ── Обработка клавиш ──
+    function handleKey(label) {
+      switch (label) {
+        case 'Backspace': deleteBack(); break;
+        case 'Enter':     insertText('\n'); break;
+        case 'Space':     insertText(' '); break;
+        case 'Tab':       insertText('\t'); break;
+        case 'Cut':
+          saveCaret();
+          var s = input.selectionStart, e = input.selectionEnd;
+          if (s !== e) {
+            addToLm(input.value.slice(s, e));
+            input.value = input.value.slice(0, s) + input.value.slice(e);
+            caretPos = s;
+            input.setSelectionRange(s, s);
+          } else if (input.value) {
+            addToLm(input.value);
+          }
+          break;
+        case 'Paste':
+          if (lm.length > 0) insertText(lm[lm.length - 1]);
+          break;
+        case 'PastePlus':
+          if (helplistOpen) closeHelplist();
+          else openHelplist();
+          break;
+        case 'Lang':
+          if (currentLang === 'sym') {
+            currentLang = prevLang === 'en' ? 'ru' : 'en';
+          } else {
+            currentLang = currentLang === 'en' ? 'ru' : 'en';
+          }
+          renderRows();
+          break;
+        case 'Sym':
+          if (currentLang === 'sym') {
+            currentLang = prevLang;
+          } else {
+            prevLang = currentLang;
+            currentLang = 'sym';
+          }
+          renderRows();
+          break;
+        case 'F1':
+          if (helplistOpen) closeHelplist();
+          else openHelplist();
+          break;
+        // Автозакрытие скобок (открывающие)
+        case '(':  insertBracket('(', ')');  break;
+        case '{':  insertBracket('{', '}');  break;
+        case '[':  insertBracket('[', ']');  break;
+        // Закрывающие скобки — просто вставляем символ
+        case ')':  insertText(')');  break;
+        case '}':  insertText('}');  break;
+        case ']':  insertText(']');  break;
+        default:
+          insertText(label);
+      }
+    }
+
+    // ── Создание клавиши ──
+    function makeKey(label) {
+      var el = document.createElement('div');
+      el.className = 'key';
+
+      if (label === 'Backspace')      { el.classList.add('backspace'); el.textContent = '⌫'; }
+      else if (label === 'Enter')     { el.classList.add('enter');    el.textContent = '↵'; }
+      else if (label === 'Tab')       { el.classList.add('special','wide'); el.textContent = 'Tab ⇥'; }
+      else if (label === 'Cut')       { el.classList.add('special');  el.textContent = '✂ Ctrl+X'; }
+      else if (label === 'Paste')     { el.classList.add('special');  el.textContent = '📋 Ctrl+V'; }
+      else if (label === 'PastePlus') { el.classList.add('special');  el.textContent = '📋 V+'; }
+      else if (label === 'Space')     { el.classList.add('space');    el.textContent = 'Space'; }
+      else if (label === 'Lang')      { el.classList.add('special','icon'); el.textContent = '🌐'; el.title = 'Сменить язык'; }
+      else if (label === 'Sym')       { el.classList.add('special','icon'); el.textContent = 'Σ'; el.title = 'Символы'; }
+      else { el.textContent = label; }
+
+      el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        el.classList.add('pressed');
+        setTimeout(function () { el.classList.remove('pressed'); }, 100);
+        handleKey(label);
+      });
+      el.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+      el.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        el.classList.remove('pressed');
+        handleKey(label);
+      }, { passive: false });
+      return el;
+    }
+
+    // ── Рендер рядов ──
+    function renderRows() {
+      var L = layouts[currentLang];
+      ['numbers','row1','row2','row3','bottom'].forEach(function (rowName) {
+        var rowEl = kb.querySelector('[data-row="' + rowName + '"]');
+        rowEl.innerHTML = '';
+        L[rowName].forEach(function (label) {
+          rowEl.appendChild(makeKey(label));
+        });
+      });
+    }
+
+    // ── Развернуть / свернуть ──
+    function expand() {
+      closeHelplist();
+      kb.classList.remove('collapsed');
+      keyboardOpen = true;
+      restoreCaret();
+    }
+    function collapse() {
+      closeHelplist();
+      saveCaret();
+      kb.classList.add('collapsed');
+      keyboardOpen = false;
+      input.blur();
+    }
+
+    // ── Клик по полю ввода ──
+    input.addEventListener('click', function () {
+      if (keyboardOpen) collapse();
+      else expand();
+    });
+
+    // ── Esc ──
+    function escAction() {
+      if (helplistOpen) { closeHelplist(); return; }
+      if (keyboardOpen) collapse();
+      else expand();
+    }
+    kEsc.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    kEsc.addEventListener('click', function (e) { e.preventDefault(); escAction(); });
+    kEsc.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+    kEsc.addEventListener('touchend', function (e) { e.preventDefault(); escAction(); }, { passive: false });
+
+    // ── Физическая клавиша Escape ──
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        escAction();
+      }
+    });
+
+    // ── F1 ──
+    function f1Action() {
+      if (helplistOpen) closeHelplist();
+      else openHelplist();
+    }
+    kF1.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    kF1.addEventListener('click', function (e) { e.preventDefault(); f1Action(); });
+    kF1.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+    kF1.addEventListener('touchend', function (e) { e.preventDefault(); f1Action(); }, { passive: false });
+
+    // ── Сохранение курсора ──
+    input.addEventListener('blur', saveCaret);
+    input.addEventListener('keyup', saveCaret);
+
+    // ── Старт ──
+    renderRows();
+  })();
+  </script>
+</body>
+</html>
+
